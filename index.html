@@ -2,110 +2,126 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>رماة السهام - Ragdoll Archers Online</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Matter.js Physics Engine -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
     
     <style>
-        body { font-family: 'Cairo', sans-serif; overflow: hidden; touch-action: none; background-color: #1a202c; user-select: none; }
-        canvas { display: block; width: 100%; height: 100%; }
-        .game-ui { position: absolute; pointer-events: none; width: 100%; height: 100%; top: 0; left: 0; }
+        body { font-family: 'Cairo', sans-serif; overflow: hidden; touch-action: none; background-color: #1a202c; user-select: none; -webkit-tap-highlight-color: transparent; }
+        canvas { display: block; width: 100%; height: 100%; outline: none; }
+        .game-ui { position: absolute; pointer-events: none; width: 100%; height: 100%; top: 0; left: 0; z-index: 10; }
         .interactive { pointer-events: auto; }
-        .health-bar { transition: width 0.3s ease; }
+        .health-bar { transition: width 0.2s ease-out; }
         
-        /* تأثيرات بصرية */
+        /* زر اللمس */
+        .touch-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(4px);
+            transition: all 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: none;
+        }
+        .touch-btn:active {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(0.95);
+        }
+
+        .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
         @keyframes shake {
-            0% { transform: translate(1px, 1px) rotate(0deg); }
-            10% { transform: translate(-1px, -2px) rotate(-1deg); }
-            20% { transform: translate(-3px, 0px) rotate(1deg); }
-            30% { transform: translate(3px, 2px) rotate(0deg); }
-            40% { transform: translate(1px, -1px) rotate(1deg); }
-            50% { transform: translate(-1px, 2px) rotate(-1deg); }
-            60% { transform: translate(-3px, 1px) rotate(0deg); }
-            70% { transform: translate(3px, 1px) rotate(-1deg); }
-            80% { transform: translate(-1px, -1px) rotate(1deg); }
-            90% { transform: translate(1px, 2px) rotate(0deg); }
-            100% { transform: translate(1px, -2px) rotate(-1deg); }
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
         }
-        .shake { animation: shake 0.5s; }
-        .hit-text {
-            animation: floatUp 1s ease-out forwards;
-            text-shadow: 2px 2px 0 #000;
-        }
-        @keyframes floatUp {
-            0% { opacity: 1; transform: translateY(0) scale(1); }
-            100% { opacity: 0; transform: translateY(-50px) scale(1.5); }
+
+        /* تحذير التدوير للموبايل */
+        #rotate-warning { display: none; }
+        @media (max-width: 768px) and (orientation: portrait) {
+            #rotate-warning { display: flex; }
+            #game-container { display: none; }
         }
     </style>
 </head>
 <body>
 
-    <!-- واجهة اللعبة -->
-    <div id="game-container" class="relative w-full h-screen">
-        
-        <!-- شاشة البداية -->
-        <div id="start-screen" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 bg-opacity-95 text-white interactive">
-            <h1 class="text-5xl font-bold mb-4 text-yellow-400">رماة السهام أونلاين</h1>
-            <p class="mb-8 text-xl text-gray-300">اسحب للرمي، تحرك بالأسهم أو الأزرار، اهزم خصمك!</p>
-            <div class="flex gap-4">
-                <button id="btn-create" class="px-8 py-4 bg-green-600 hover:bg-green-700 rounded-lg text-xl font-bold shadow-lg transform transition hover:scale-105">ابحث عن مباراة</button>
-            </div>
-            <p id="status-text" class="mt-4 text-sm text-yellow-500 min-h-[20px]"></p>
-        </div>
-
-        <!-- واجهة اللعب (HUD) -->
-        <div id="hud" class="game-ui hidden">
-            <!-- لاعب 1 (أنت) -->
-            <div class="absolute top-4 right-4 flex flex-col items-end w-64">
-                <div class="flex items-center gap-2 mb-1">
-                    <span class="text-white font-bold" id="p1-name">أنت</span>
-                    <div class="w-8 h-8 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center">👤</div>
-                </div>
-                <div class="w-full bg-gray-700 h-4 rounded-full border border-gray-500 overflow-hidden">
-                    <div id="p1-health" class="h-full bg-green-500 w-full health-bar"></div>
-                </div>
-                <div id="p1-powerups" class="flex gap-1 mt-1"></div>
-            </div>
-
-            <!-- لاعب 2 (الخصم) -->
-            <div class="absolute top-4 left-4 flex flex-col items-start w-64">
-                <div class="flex items-center gap-2 mb-1">
-                    <div class="w-8 h-8 rounded-full bg-red-500 border-2 border-white flex items-center justify-center">💀</div>
-                    <span class="text-white font-bold" id="p2-name">الخصم</span>
-                </div>
-                <div class="w-full bg-gray-700 h-4 rounded-full border border-gray-500 overflow-hidden">
-                    <div id="p2-health" class="h-full bg-red-500 w-full health-bar"></div>
-                </div>
-                <div id="p2-powerups" class="flex gap-1 mt-1"></div>
-            </div>
-
-            <!-- أزرار التحكم للموبايل -->
-            <div class="absolute bottom-4 left-4 flex gap-4 interactive md:hidden">
-                <button id="btn-left" class="w-16 h-16 bg-white/20 rounded-full text-white text-2xl border border-white/50 backdrop-blur">⬅️</button>
-                <button id="btn-right" class="w-16 h-16 bg-white/20 rounded-full text-white text-2xl border border-white/50 backdrop-blur">➡️</button>
-                <button id="btn-jump" class="w-16 h-16 bg-white/20 rounded-full text-white text-2xl border border-white/50 backdrop-blur">⬆️</button>
-            </div>
-            
-            <!-- رسائل النظام -->
-            <div id="game-message" class="absolute top-1/4 left-1/2 transform -translate-x-1/2 text-center pointer-events-none"></div>
-        </div>
-        
-        <!-- الكانفاس (الرسم) -->
-        <div id="canvas-wrapper" class="w-full h-full"></div>
+    <!-- شاشة تحذير التدوير -->
+    <div id="rotate-warning" class="fixed inset-0 z-[100] bg-gray-900 text-white flex-col items-center justify-center p-8 text-center">
+        <div class="text-6xl mb-4">🔄</div>
+        <h2 class="text-2xl font-bold mb-2">يرجى تدوير الجهاز</h2>
+        <p class="text-gray-400">هذه اللعبة مصممة للعب بالوضع الأفقي للحصول على أفضل تجربة.</p>
     </div>
 
-    <!-- Firebase Script -->
+    <div id="game-container" class="relative w-full h-screen">
+        <!-- شاشة البداية / النهاية -->
+        <div id="overlay-screen" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 bg-opacity-95 text-white interactive transition-opacity duration-300 px-4">
+            <h1 class="text-4xl md:text-6xl font-bold mb-4 text-yellow-400 drop-shadow-lg text-center">رماة السهام</h1>
+            <p id="overlay-msg" class="mb-8 text-lg md:text-xl text-gray-300 text-center max-w-md">
+                <span class="hidden md:inline">التحكم: الأسهم للحركة، الماوس للتصويب</span>
+                <span class="md:hidden">التحكم: أزرار الشاشة للحركة، اللمس والسحب للتصويب</span>
+            </p>
+            
+            <div class="flex flex-col gap-4 w-full max-w-xs">
+                <button id="btn-create" class="px-6 py-4 bg-green-600 hover:bg-green-700 rounded-xl text-lg md:text-xl font-bold shadow-lg transition transform active:scale-95 w-full flex items-center justify-center gap-2">
+                    <span>⚔️</span> بحث عن خصم
+                </button>
+                <button id="btn-restart" class="hidden px-6 py-4 bg-blue-600 hover:bg-blue-700 rounded-xl text-lg md:text-xl font-bold shadow-lg transition transform active:scale-95 w-full">
+                    🔄 لعب مرة أخرى
+                </button>
+            </div>
+            
+            <p id="status-text" class="mt-6 text-sm md:text-base text-yellow-500 font-mono min-h-[20px] text-center px-4"></p>
+        </div>
+
+        <!-- واجهة اللعب -->
+        <div id="hud" class="game-ui hidden">
+            <!-- P1 (You) -->
+            <div class="absolute top-4 right-4 flex flex-col items-end w-32 md:w-64">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="text-white font-bold drop-shadow-md text-sm md:text-base">أنت</span>
+                    <div class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center text-xs">👤</div>
+                </div>
+                <div class="w-full bg-gray-800 h-3 md:h-4 rounded-full border border-gray-600 overflow-hidden relative">
+                    <div id="p1-health" class="h-full bg-green-500 w-full health-bar absolute right-0"></div>
+                </div>
+            </div>
+
+            <!-- P2 (Enemy) -->
+            <div class="absolute top-4 left-4 flex flex-col items-start w-32 md:w-64">
+                <div class="flex items-center gap-2 mb-1">
+                    <div class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-red-500 border-2 border-white flex items-center justify-center text-xs">💀</div>
+                    <span class="text-white font-bold drop-shadow-md text-sm md:text-base">الخصم</span>
+                </div>
+                <div class="w-full bg-gray-800 h-3 md:h-4 rounded-full border border-gray-600 overflow-hidden relative">
+                    <div id="p2-health" class="h-full bg-red-500 w-full health-bar absolute left-0"></div>
+                </div>
+            </div>
+
+            <!-- Mobile Controls -->
+            <div class="absolute bottom-6 w-full px-4 md:px-8 flex justify-between interactive md:hidden pointer-events-none pb-safe">
+                <div class="flex gap-4 pointer-events-auto">
+                    <button id="btn-left" class="touch-btn w-16 h-16 rounded-full text-3xl shadow-xl">⬅️</button>
+                    <button id="btn-right" class="touch-btn w-16 h-16 rounded-full text-3xl shadow-xl">➡️</button>
+                </div>
+                <div class="pointer-events-auto">
+                    <button id="btn-jump" class="touch-btn w-16 h-16 rounded-full text-3xl shadow-xl">⬆️</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="canvas-wrapper" class="w-full h-full cursor-crosshair"></div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc, getDocs, query, where, limit } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc, getDocs, query, where, limit, arrayUnion } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
-        // 1. إعدادات Firebase
+        // --- Configuration ---
         const firebaseConfig = {
             apiKey: "AIzaSyD6MRZ7d7J1333erYoBrUGqocJNdGNjB7w",
             authDomain: "neew-aec2b.firebaseapp.com",
@@ -119,23 +135,10 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        
-        // استخدام معرف التطبيق من البيئة أو افتراضي
-        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'default-ragdoll-app';
-        const MATCHES_COLL = `artifacts/${APP_ID}/public/data/matches`;
+        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'ragdoll-v2';
+        const MATCHES_COLL = `artifacts/${APP_ID}/public/data/matches_v2`;
 
-        // 2. متغيرات اللعبة
-        let engine, render, runner, world;
-        let myUserId = null;
-        let matchId = null;
-        let isHost = false;
-        let playerMe, playerOpponent;
-        let arrows = [];
-        let gameLoopActive = false;
-        let lastSyncTime = 0;
-        let unsubscribeMatch = null;
-        
-        // تعريفات الفيزياء
+        // --- Physics Engine Constants ---
         const Engine = Matter.Engine,
               Render = Matter.Render,
               Runner = Matter.Runner,
@@ -146,130 +149,141 @@
               Events = Matter.Events,
               Vector = Matter.Vector;
 
-        // ثوابت اللعبة
-        const CATEGORY_PLAYER = 0x0001, CATEGORY_ARROW = 0x0002, CATEGORY_GROUND = 0x0004, CATEGORY_POWERUP = 0x0008;
-        const SCREEN_WIDTH = window.innerWidth;
-        const SCREEN_HEIGHT = window.innerHeight;
+        const CAT_PLAYER = 0x0001, CAT_ARROW = 0x0002, CAT_GROUND = 0x0004, CAT_SENSOR = 0x0008;
 
-        // حالة اللعب المحلية للمزامنة
-        const localState = {
-            hp: 100,
-            pos: { x: 0, y: 0 },
-            angle: 0, // زاوية الرأس/الرمي
-            anim: 'idle', // idle, walk, aim
-            lastShot: 0
-        };
+        // --- Game State ---
+        let engine, render, runner;
+        let myUserId = null;
+        let matchId = null;
+        let isHost = false;
+        let playerMe = null;
+        let playerOpponent = null;
+        let keys = { ArrowUp: false, ArrowLeft: false, ArrowRight: false, w: false, a: false, d: false, " ": false };
+        let gameActive = false;
+        let lastSync = 0;
+        let unsubscribeMatch = null;
 
-        // 3. التهيئة والاتصال
-        async function initGame() {
-            const btnCreate = document.getElementById('btn-create');
+        // --- Initialization ---
+        async function init() {
             const statusText = document.getElementById('status-text');
-
             statusText.innerText = "جاري الاتصال بالسيرفر...";
             
             try {
-                // تسجيل الدخول
                 await signInAnonymously(auth);
-                
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         myUserId = user.uid;
-                        statusText.innerText = `تم الاتصال. المعرف: ${myUserId.substring(0,5)}`;
-                        btnCreate.onclick = findMatch;
+                        statusText.innerText = "جاهز للعب";
+                        document.getElementById('btn-create').onclick = findMatch;
+                        document.getElementById('btn-restart').onclick = () => location.reload();
                     }
                 });
             } catch (err) {
-                console.error("Firebase Auth Error:", err);
-                statusText.innerText = "خطأ في الاتصال. تأكد من إعدادات Firebase.";
+                statusText.innerText = "فشل الاتصال: " + err.message;
             }
+
+            // Keyboard Listeners
+            window.addEventListener('keydown', (e) => keys[e.key] = true);
+            window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+            // Mobile Listeners - Improved to prevent ghost clicks and scrolling
+            const bindBtn = (id, key) => {
+                const btn = document.getElementById(id);
+                const handleStart = (e) => { 
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                    keys[key] = true; 
+                    btn.classList.add('scale-90', 'bg-white/30');
+                };
+                const handleEnd = (e) => { 
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                    keys[key] = false; 
+                    btn.classList.remove('scale-90', 'bg-white/30');
+                };
+
+                btn.addEventListener('touchstart', handleStart, { passive: false });
+                btn.addEventListener('touchend', handleEnd, { passive: false });
+                btn.addEventListener('mousedown', handleStart);
+                btn.addEventListener('mouseup', handleEnd);
+                btn.addEventListener('mouseleave', handleEnd); // Handle drag out
+            };
+
+            bindBtn('btn-left', 'ArrowLeft');
+            bindBtn('btn-right', 'ArrowRight');
+            bindBtn('btn-jump', 'ArrowUp');
         }
 
-        // 4. البحث عن مباراة (Matchmaking)
+        // --- Matchmaking ---
         async function findMatch() {
             const statusText = document.getElementById('status-text');
             const btnCreate = document.getElementById('btn-create');
             btnCreate.disabled = true;
-            statusText.innerText = "يبحث عن خصم...";
+            btnCreate.innerHTML = `<div class="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full mr-2"></div> جاري البحث...`;
+            
+            if(unsubscribeMatch) unsubscribeMatch();
 
-            // البحث عن غرفة بانتظار لاعب
             const q = query(collection(db, MATCHES_COLL), where("status", "==", "waiting"), limit(1));
             const querySnapshot = await getDocs(q);
 
             if (!querySnapshot.empty) {
-                // الانضمام لغرفة موجودة
                 const docSnap = querySnapshot.docs[0];
                 matchId = docSnap.id;
                 isHost = false;
                 
                 await updateDoc(doc(db, MATCHES_COLL, matchId), {
                     status: "playing",
-                    player2: { id: myUserId, hp: 100, x: 800, y: 400 }, // موقع البداية يمين
+                    player2: { id: myUserId, hp: 100, x: 800, y: 400 },
                     updatedAt: Date.now()
                 });
                 
-                statusText.innerText = "تم العثور على خصم! جاري بدء اللعبة...";
-                startGame(matchId);
-
+                statusText.innerText = "تم الانضمام! استعد...";
+                startGame();
             } else {
-                // إنشاء غرفة جديدة
                 isHost = true;
                 const newMatchRef = doc(collection(db, MATCHES_COLL));
                 matchId = newMatchRef.id;
                 
                 await setDoc(newMatchRef, {
                     status: "waiting",
-                    createdAt: Date.now(),
                     hostId: myUserId,
-                    player1: { id: myUserId, hp: 100, x: 200, y: 400 }, // موقع البداية يسار
+                    player1: { id: myUserId, hp: 100, x: 200, y: 400 },
                     player2: null,
-                    events: [] // قائمة للأحداث (إطلاق نار، اصابات)
+                    events: []
                 });
 
-                statusText.innerText = "بانتظار انضمام لاعب آخر...";
+                statusText.innerText = "بانتظار لاعب آخر...";
                 
-                // الاستماع للتغييرات لمعرفة متى ينضم الخصم
                 unsubscribeMatch = onSnapshot(doc(db, MATCHES_COLL, matchId), (snap) => {
                     const data = snap.data();
                     if (data && data.status === "playing") {
-                        statusText.innerText = "انضم الخصم! استعد...";
-                        setTimeout(() => startGame(matchId), 1000);
+                        statusText.innerText = "تم دخول الخصم!";
+                        startGame();
                     }
                 });
             }
         }
 
-        // 5. بدء اللعبة ومحرك الفيزياء
-        function startGame(mId) {
-            document.getElementById('start-screen').classList.add('hidden');
+        // --- Game Engine ---
+        function startGame() {
+            document.getElementById('overlay-screen').classList.add('opacity-0', 'pointer-events-none');
             document.getElementById('hud').classList.remove('hidden');
-            
-            setupPhysics();
-            setupInput();
-            setupSync(mId);
-            gameLoopActive = true;
-        }
+            gameActive = true;
 
-        function setupPhysics() {
-            // تنظيف إذا كان موجود
             if (engine) {
-                Matter.World.clear(world);
+                Matter.World.clear(engine.world);
                 Matter.Engine.clear(engine);
-                if (render) {
-                    Matter.Render.stop(render);
-                    render.canvas.remove();
-                    render.canvas = null;
-                    render.context = null;
-                    render.textures = {};
-                }
-                if (runner) Matter.Runner.stop(runner);
+            }
+            if (render) {
+                Events.off(render);
+                render.canvas.remove();
+                render.canvas = null;
             }
 
             engine = Engine.create();
-            world = engine.world;
-            // تقليل الجاذبية قليلاً للعب أمتع
-            engine.gravity.y = 1.2;
+            engine.gravity.y = 1.5;
+            const world = engine.world;
 
-            // إعداد الريندر
             render = Render.create({
                 element: document.getElementById('canvas-wrapper'),
                 engine: engine,
@@ -278,285 +292,275 @@
                     height: window.innerHeight,
                     wireframes: false,
                     background: '#1a202c',
-                    pixelRatio: 1 // للأداء
+                    pixelRatio: Math.min(window.devicePixelRatio, 2) // Optimization
                 }
             });
 
-            // الأرضيات
-            const groundOptions = { isStatic: true, render: { fillStyle: '#4a5568' }, collisionFilter: { category: CATEGORY_GROUND } };
-            const platforms = [
-                Bodies.rectangle(window.innerWidth/2, window.innerHeight, window.innerWidth, 60, groundOptions), // الأرض
-                Bodies.rectangle(window.innerWidth/2, window.innerHeight - 300, 200, 20, groundOptions), // منصة وسطى
-                Bodies.rectangle(window.innerWidth * 0.2, window.innerHeight - 150, 150, 20, groundOptions), // يسار
-                Bodies.rectangle(window.innerWidth * 0.8, window.innerHeight - 150, 150, 20, groundOptions)  // يمين
-            ];
+            // Make Physics Boundaries Dynamic based on screen
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const groundOpts = { isStatic: true, render: { fillStyle: '#2d3748' }, friction: 1, collisionFilter: { category: CAT_GROUND } };
             
-            // جدران
-            platforms.push(Bodies.rectangle(0, window.innerHeight/2, 50, window.innerHeight, { isStatic: true, visible: false }));
-            platforms.push(Bodies.rectangle(window.innerWidth, window.innerHeight/2, 50, window.innerHeight, { isStatic: true, visible: false }));
+            // Build Arena
+            Composite.add(world, [
+                Bodies.rectangle(w/2, h + 50, w, 160, groundOpts), // Floor
+                Bodies.rectangle(w/2, -100, w, 50, groundOpts),    // Ceiling
+                Bodies.rectangle(-50, h/2, 100, h * 2, groundOpts), // Left Wall
+                Bodies.rectangle(w + 50, h/2, 100, h * 2, groundOpts), // Right Wall
+                
+                // Platforms - adaptive width
+                Bodies.rectangle(w/2, h - 250, Math.min(300, w * 0.4), 20, groundOpts),
+                Bodies.rectangle(w * 0.15, h - 450, Math.min(200, w * 0.25), 20, groundOpts),
+                Bodies.rectangle(w * 0.85, h - 450, Math.min(200, w * 0.25), 20, groundOpts)
+            ]);
 
-            Composite.add(world, platforms);
+            const p1Start = { x: w * 0.15, y: h - 200, color: '#3b82f6' };
+            const p2Start = { x: w * 0.85, y: h - 200, color: '#ef4444' };
 
-            // إنشاء اللاعبين
-            // اللاعب المحلي
-            const startX = isHost ? window.innerWidth * 0.15 : window.innerWidth * 0.85;
-            const color = isHost ? '#3b82f6' : '#ef4444'; // أزرق للمضيف، أحمر للضيف (محلياً)
+            if (isHost) {
+                playerMe = createPlayer(p1Start.x, p1Start.y, p1Start.color, true);
+                playerOpponent = createPlayer(p2Start.x, p2Start.y, p2Start.color, false);
+            } else {
+                playerMe = createPlayer(p2Start.x, p2Start.y, p2Start.color, true);
+                playerOpponent = createPlayer(p1Start.x, p1Start.y, p1Start.color, false);
+            }
+
+            Composite.add(world, [playerMe.composite, playerOpponent.composite]);
+
+            Events.on(engine, 'beforeUpdate', gameLoop);
+            Events.on(engine, 'collisionStart', handleCollisions);
             
-            playerMe = createRagdoll(startX, 200, color, true);
-            
-            // اللاعب الخصم (دمية بسيطة حالياً حتى تأتي البيانات)
-            const opX = isHost ? window.innerWidth * 0.85 : window.innerWidth * 0.15;
-            const opColor = isHost ? '#ef4444' : '#3b82f6';
-            playerOpponent = createRagdoll(opX, 200, opColor, false);
-
-            Runner.run(engine);
-            Render.run(render);
-
-            // حلقة التحديث الخاصة بنا للرسم الإضافي والمنطق
-            Events.on(engine, 'beforeUpdate', () => {
-                updatePlayerLogic(playerMe);
-                interpolateOpponent(playerOpponent);
+            Events.on(engine, 'afterUpdate', () => {
+                if (playerMe && playerMe.body.position.y > window.innerHeight + 100) {
+                    takeDamage(100);
+                }
             });
 
-            // كشف التصادمات
-            Events.on(engine, 'collisionStart', (event) => {
-                event.pairs.forEach((pair) => {
-                    handleCollision(pair.bodyA, pair.bodyB);
-                });
-            });
-
-            // رسم إضافي (مؤشرات التصويب)
             Events.on(render, 'afterRender', () => {
                 const ctx = render.context;
-                drawAimLine(ctx, playerMe);
+                drawAiming(ctx, playerMe);
                 drawNames(ctx);
             });
+
+            if (!isHost && unsubscribeMatch) unsubscribeMatch();
+            unsubscribeMatch = onSnapshot(doc(db, MATCHES_COLL, matchId), handleNetworkUpdate);
+
+            // Input Listeners
+            const canvas = render.canvas;
+            canvas.addEventListener('mousedown', startAim);
+            canvas.addEventListener('touchstart', (e) => startAim(e.touches[0]), {passive: false});
+            window.addEventListener('mousemove', updateAim);
+            window.addEventListener('touchmove', (e) => updateAim(e.touches[0]), {passive: false});
+            window.addEventListener('mouseup', shoot);
+            window.addEventListener('touchend', shoot);
+            
+            // Handle Resize by just updating render size (physics boundaries remain fixed to initial load for stability in this version)
+            window.addEventListener('resize', () => {
+                render.canvas.width = window.innerWidth;
+                render.canvas.height = window.innerHeight;
+            });
+
+            Runner.run(Runner.create(), engine);
+            Render.run(render);
         }
 
-        // إنشاء شخصية Ragdoll مبسطة
-        function createRagdoll(x, y, color, isMe) {
+        function createPlayer(x, y, color, isMe) {
             const group = Body.nextGroup(true);
             
-            // الجسم
-            const body = Bodies.rectangle(x, y, 30, 60, { 
-                collisionFilter: { group: group, category: CATEGORY_PLAYER },
-                frictionAir: 0.05,
+            const body = Bodies.rectangle(x, y, 30, 50, { 
+                collisionFilter: { group: group, category: CAT_PLAYER },
+                friction: 0.1, 
+                inertia: Infinity, 
                 render: { fillStyle: color }
             });
             
-            // الرأس
-            const head = Bodies.circle(x, y - 40, 15, { 
-                collisionFilter: { group: group, category: CATEGORY_PLAYER },
-                render: { fillStyle: '#fbbf24' } // وجه أصفر
+            const head = Bodies.circle(x, y - 35, 12, { 
+                collisionFilter: { group: group, category: CAT_PLAYER },
+                render: { fillStyle: '#fcd34d' }
             });
 
-            // ربط الرأس بالجسم
+            const sensor = Bodies.rectangle(x, y + 25, 20, 5, {
+                isSensor: true,
+                render: { visible: false },
+                collisionFilter: { category: CAT_SENSOR }
+            });
+
             const neck = Constraint.create({
-                bodyA: body,
-                pointA: { x: 0, y: -30 },
-                bodyB: head,
-                pointB: { x: 0, y: 15 },
-                stiffness: 0.5,
-                length: 0,
-                render: { visible: false }
+                bodyA: body, pointA: { x: 0, y: -25 },
+                bodyB: head, pointB: { x: 0, y: 0 },
+                stiffness: 1, length: 0, render: { visible: false }
             });
 
-            // القاعدة للحركة (لإبقاء اللاعب واقفاً نسبياً)
-            // في ألعاب Ragdoll، نستخدم عادة قوة دوران لابقائه واقفاً، 
-            // لكن هنا سنستخدم Inertia عالية لمنع الدوران المفرط
-            Body.setInertia(body, Infinity); 
+            const sensorConnect = Constraint.create({
+                bodyA: body, pointA: { x: 0, y: 25 },
+                bodyB: sensor, pointB: { x: 0, y: 0 },
+                stiffness: 1, length: 0, render: { visible: false }
+            });
 
-            Composite.add(world, [body, head, neck]);
+            const composite = Composite.create();
+            Composite.add(composite, [body, head, sensor, neck, sensorConnect]);
 
             return {
-                mainBody: body,
-                head: head,
-                isMe: isMe,
-                color: color,
+                composite, body, head, sensor,
+                isMe, color,
                 hp: 100,
-                targetX: x, // للمزامنة
-                targetY: y,
-                aimAngle: 0,
-                power: 0,
+                canJump: false,
                 isCharging: false,
-                powerups: []
+                aimAngle: 0,
+                aimPower: 0,
+                targetPos: { x, y }
             };
         }
 
-        // التحكم والمنطق
-        let mouseStart = null;
-        let mouseCurrent = null;
+        function gameLoop() {
+            if (!playerMe || playerMe.hp <= 0) return;
 
-        function setupInput() {
-            const canvas = document.querySelector('canvas');
+            const speed = 4;
+            let velX = 0;
             
-            // تصويب الماوس/اللمس
-            canvas.addEventListener('mousedown', startAim);
-            canvas.addEventListener('touchstart', (e) => startAim(e.touches[0]));
+            if (keys.ArrowRight || keys.d) velX = speed;
+            else if (keys.ArrowLeft || keys.a) velX = -speed;
             
-            window.addEventListener('mousemove', updateAim);
-            window.addEventListener('touchmove', (e) => updateAim(e.touches[0]));
-            
-            window.addEventListener('mouseup', shoot);
-            window.addEventListener('touchend', shoot);
+            Body.setVelocity(playerMe.body, { x: velX, y: playerMe.body.velocity.y });
 
-            // حركة الكيبورد
-            window.addEventListener('keydown', (e) => {
-                if (!playerMe || playerMe.hp <= 0) return;
-                const force = 0.01;
-                if (e.key === 'ArrowRight' || e.key === 'd') Body.applyForce(playerMe.mainBody, playerMe.mainBody.position, { x: force, y: 0 });
-                if (e.key === 'ArrowLeft' || e.key === 'a') Body.applyForce(playerMe.mainBody, playerMe.mainBody.position, { x: -force, y: 0 });
-                if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') && Math.abs(playerMe.mainBody.velocity.y) < 0.5) {
-                     Body.applyForce(playerMe.mainBody, playerMe.mainBody.position, { x: 0, y: -0.15 }); // قفز
+            if ((keys.ArrowUp || keys.w || keys[' ']) && playerMe.canJump) {
+                Body.setVelocity(playerMe.body, { x: playerMe.body.velocity.x, y: -14 });
+                playerMe.canJump = false;
+            }
+
+            const now = Date.now();
+            if (now - lastSync > 80) {
+                syncState();
+                lastSync = now;
+            }
+
+            if (playerOpponent) {
+                const curr = playerOpponent.body.position;
+                const target = playerOpponent.targetPos;
+                const dx = target.x - curr.x;
+                const dy = target.y - curr.y;
+                
+                if (Math.abs(dx) > 200 || Math.abs(dy) > 200) {
+                    Body.setPosition(playerOpponent.body, target);
+                } else {
+                    Body.setPosition(playerOpponent.body, {
+                        x: curr.x + dx * 0.2,
+                        y: curr.y + dy * 0.2
+                    });
+                    Body.setPosition(playerOpponent.head, {
+                        x: playerOpponent.body.position.x,
+                        y: playerOpponent.body.position.y - 35
+                    });
+                }
+            }
+        }
+
+        function handleCollisions(event) {
+            event.pairs.forEach(pair => {
+                const { bodyA, bodyB } = pair;
+
+                if (isSensor(bodyA, playerMe) && isGround(bodyB)) playerMe.canJump = true;
+                if (isSensor(bodyB, playerMe) && isGround(bodyA)) playerMe.canJump = true;
+
+                let arrow = isArrow(bodyA) ? bodyA : isArrow(bodyB) ? bodyB : null;
+                let player = isPlayerPart(bodyA) ? bodyA : isPlayerPart(bodyB) ? bodyB : null;
+
+                if (arrow && player) {
+                    const isMyArrow = arrow.label === 'myArrow';
+                    const isMyBody = (player === playerMe.body || player === playerMe.head);
+                    
+                    if (isMyBody && !isMyArrow && !arrow.hasHit) {
+                        arrow.hasHit = true;
+                        const dmg = (player === playerMe.head) ? 40 : 15;
+                        takeDamage(dmg);
+                        Composite.remove(engine.world, arrow);
+                        
+                        document.body.classList.remove('shake');
+                        void document.body.offsetWidth;
+                        document.body.classList.add('shake');
+                    }
                 }
             });
-
-            // أزرار الموبايل
-            document.getElementById('btn-right').onclick = () => Body.applyForce(playerMe.mainBody, playerMe.mainBody.position, { x: 0.05, y: 0 });
-            document.getElementById('btn-left').onclick = () => Body.applyForce(playerMe.mainBody, playerMe.mainBody.position, { x: -0.05, y: 0 });
-            document.getElementById('btn-jump').onclick = () => {
-                if(Math.abs(playerMe.mainBody.velocity.y) < 1) Body.applyForce(playerMe.mainBody, playerMe.mainBody.position, { x: 0, y: -0.15 });
-            };
         }
 
-        function startAim(e) {
+        function isSensor(b, p) { return b === p.sensor; }
+        function isGround(b) { return b.collisionFilter.category === CAT_GROUND; }
+        function isArrow(b) { return b.collisionFilter.category === CAT_ARROW; }
+        function isPlayerPart(b) { return b.collisionFilter.category === CAT_PLAYER; }
+
+        let aimStart = null;
+
+        function startAim(pos) {
             if (!playerMe || playerMe.hp <= 0) return;
-            const rect = document.querySelector('canvas').getBoundingClientRect();
-            // نحتاج التحويل لإحداثيات اللعبة إذا كانت الكاميرا تتحرك (هنا الكاميرا ثابتة)
-            mouseStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            const rect = render.canvas.getBoundingClientRect();
+            const cx = pos.clientX || pos.x; 
+            const cy = pos.clientY || pos.y;
+            aimStart = { x: cx - rect.left, y: cy - rect.top };
             playerMe.isCharging = true;
         }
 
-        function updateAim(e) {
+        function updateAim(pos) {
             if (!playerMe.isCharging) return;
-            const rect = document.querySelector('canvas').getBoundingClientRect();
-            mouseCurrent = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            const rect = render.canvas.getBoundingClientRect();
+            const cx = pos.clientX || pos.x; 
+            const cy = pos.clientY || pos.y;
+            const curr = { x: cx - rect.left, y: cy - rect.top };
             
-            // حساب الزاوية والقوة
-            const dx = mouseStart.x - mouseCurrent.x;
-            const dy = mouseStart.y - mouseCurrent.y;
+            const dx = aimStart.x - curr.x;
+            const dy = aimStart.y - curr.y;
             
             playerMe.aimAngle = Math.atan2(dy, dx);
-            playerMe.power = Math.min(Math.sqrt(dx*dx + dy*dy) * 0.04, 30); // حد أقصى للقوة
+            playerMe.aimPower = Math.min(Math.sqrt(dx*dx + dy*dy) * 0.05, 25);
         }
 
         function shoot() {
-            if (!playerMe || !playerMe.isCharging) return;
+            if (!playerMe.isCharging) return;
             playerMe.isCharging = false;
+            if (playerMe.aimPower < 2) return;
+
+            createArrow(playerMe.body.position.x, playerMe.body.position.y - 20, playerMe.aimAngle, playerMe.aimPower, true);
             
-            // إنشاء سهم محلياً
-            spawnArrow(playerMe.mainBody.position.x, playerMe.mainBody.position.y - 20, playerMe.aimAngle, playerMe.power, true);
-            
-            // إرسال حدث إطلاق للنار
             pushEvent({
                 type: 'shoot',
-                x: playerMe.mainBody.position.x,
-                y: playerMe.mainBody.position.y - 20,
+                x: playerMe.body.position.x,
+                y: playerMe.body.position.y - 20,
                 angle: playerMe.aimAngle,
-                power: playerMe.power,
+                power: playerMe.aimPower,
                 shooter: myUserId
             });
-
-            mouseStart = null;
-            mouseCurrent = null;
         }
 
-        function spawnArrow(x, y, angle, power, isMine) {
-            const arrow = Bodies.rectangle(x, y, 40, 5, {
+        function createArrow(x, y, angle, power, isMine) {
+            const arrow = Bodies.rectangle(x, y, 40, 4, {
                 angle: angle,
-                frictionAir: 0.02,
-                collisionFilter: { category: CATEGORY_ARROW },
-                render: { fillStyle: isMine ? '#fff' : '#ff0' }, // سهم أبيض لي، أصفر للخصم
-                label: isMine ? 'myArrow' : 'enemyArrow'
+                frictionAir: 0.01,
+                restitution: 0.5,
+                collisionFilter: { category: CAT_ARROW, mask: CAT_GROUND | CAT_PLAYER },
+                render: { fillStyle: isMine ? '#fff' : '#fbbf24' },
+                label: isMine ? 'myArrow' : 'enemyArrow',
+                isSensor: true
             });
             
-            // رأس السهم (للتصادم)
-            arrow.isSensor = true; // لكي لا يدفع اللاعب بقوة مفرطة، سنعالجه يدوياً
+            const velX = Math.cos(angle) * power;
+            const velY = Math.sin(angle) * power;
+            Body.setVelocity(arrow, { x: velX, y: velY });
 
-            Body.setVelocity(arrow, {
-                x: Math.cos(angle) * power,
-                y: Math.sin(angle) * power
-            });
-
-            Composite.add(world, arrow);
-            arrows.push({ body: arrow, creationTime: Date.now() });
+            Composite.add(engine.world, arrow);
             
-            // صوت
-            // playSound('shoot');
+            setTimeout(() => Composite.remove(engine.world, arrow), 5000);
         }
 
-        function handleCollision(bodyA, bodyB) {
-            // منطق اصطدام السهم باللاعب
-            let arrowBody = null;
-            let playerBody = null;
-
-            if (bodyA.label && bodyA.label.includes('Arrow')) arrowBody = bodyA;
-            if (bodyB.label && bodyB.label.includes('Arrow')) arrowBody = bodyB;
-
-            // البحث عن جسم اللاعب (وليس السهم نفسه)
-            if (bodyA.category === CATEGORY_PLAYER) playerBody = bodyA;
-            if (bodyB.category === CATEGORY_PLAYER) playerBody = bodyB;
-
-            if (arrowBody && playerBody) {
-                // تحقق من الملكية: لا تصيب نفسك
-                const isMyArrow = arrowBody.label === 'myArrow';
-                // إذا كان السهم لي، واللاعب المصاب هو جسم الخصم (نحن نتحكم بالاصابات محلياً أو مركزياً)
-                // للتبسيط: كل لاعب يحسب الاصابات التي تقع *عليه* ويرسل النقصان
+        function drawAiming(ctx, p) {
+            if (p.isCharging) {
+                const start = p.body.position;
+                const endX = start.x + Math.cos(p.aimAngle) * (p.aimPower * 5);
+                const endY = start.y + Math.sin(p.aimAngle) * (p.aimPower * 5);
                 
-                // هنا سنقوم بجعل اللاعب الذي أصيب هو من يرسل البيانات
-                if (playerBody === playerMe.mainBody || playerBody === playerMe.head) {
-                    if (!isMyArrow) { // أصبت بسهم عدو
-                        takeDamage(playerBody === playerMe.head ? 40 : 20);
-                        // إزالة السهم
-                        World.remove(world, arrowBody);
-                        
-                        // اهتزاز الكاميرا
-                        document.body.classList.add('shake');
-                        setTimeout(()=>document.body.classList.remove('shake'), 500);
-                    }
-                }
-            }
-        }
-
-        function takeDamage(amount) {
-            playerMe.hp -= amount;
-            updateHealthUI();
-            
-            // إرسال التحديث
-            // سنقوم بتحديث الحالة العامة
-            if (playerMe.hp <= 0) {
-                playerMe.hp = 0;
-                pushEvent({ type: 'win', winner: isHost ? 'p2' : 'p1' }); // الخصم فاز
-                alert("لقد خسرت!");
-                location.reload();
-            }
-        }
-
-        function updatePlayerLogic(p) {
-            // التأكد من أن اللاعب لا يسقط خارج العالم
-            if (p.mainBody.position.y > window.innerHeight + 100) {
-                p.mainBody.position.y = 0;
-                p.mainBody.position.x = window.innerWidth / 2;
-                Body.setVelocity(p.mainBody, {x:0, y:0});
-                takeDamage(30); // ضرر السقوط
-            }
-            
-            // تحديث المتغير المحلي للمزامنة
-            localState.pos = p.mainBody.position;
-            localState.hp = p.hp;
-            localState.angle = p.aimAngle;
-        }
-
-        // رسم خط التصويب
-        function drawAimLine(ctx, p) {
-            if (p.isCharging && mouseStart && mouseCurrent) {
                 ctx.beginPath();
-                ctx.moveTo(p.mainBody.position.x, p.mainBody.position.y - 30);
-                const endX = p.mainBody.position.x + Math.cos(p.aimAngle) * p.power * 10;
-                const endY = (p.mainBody.position.y - 30) + Math.sin(p.aimAngle) * p.power * 10;
+                ctx.moveTo(start.x, start.y);
                 ctx.lineTo(endX, endY);
-                ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(p.power/20, 1)})`;
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 2 + (p.aimPower / 5);
+                ctx.strokeStyle = `rgba(255, 255, 255, 0.6)`;
                 ctx.setLineDash([5, 5]);
                 ctx.stroke();
                 ctx.setLineDash([]);
@@ -564,123 +568,86 @@
         }
 
         function drawNames(ctx) {
-            ctx.fillStyle = "#FFF";
-            ctx.font = "14px Cairo";
+            ctx.font = "bold 14px Cairo";
             ctx.textAlign = "center";
-            if(playerMe) ctx.fillText("أنت", playerMe.mainBody.position.x, playerMe.mainBody.position.y - 60);
-            if(playerOpponent) ctx.fillText("الخصم", playerOpponent.mainBody.position.x, playerOpponent.mainBody.position.y - 60);
+            
+            if (playerMe && playerMe.hp > 0) {
+                ctx.fillStyle = "#3b82f6";
+                ctx.fillText("أنت", playerMe.body.position.x, playerMe.body.position.y - 50);
+            }
+            if (playerOpponent && playerOpponent.hp > 0) {
+                ctx.fillStyle = "#ef4444";
+                ctx.fillText("الخصم", playerOpponent.body.position.x, playerOpponent.body.position.y - 50);
+            }
         }
 
-        // 6. المزامنة (Firestore Sync)
-        // ملاحظة: Firestore ليس مثالياً للزمن الحقيقي (Realtime) السريع، لكننا سنستخدمه وفق الطلب
-        // سنرسل التحديث كل 100ms لتقليل الكتابة
-        
-        let lastUpload = 0;
-
-        function setupSync(mId) {
-            // الاستماع للتغييرات في المباراة
-            onSnapshot(doc(db, MATCHES_COLL, mId), (docSnap) => {
-                if (!docSnap.exists()) return;
-                const data = docSnap.data();
-                
-                // تحديث الخصم
-                const opData = isHost ? data.player2 : data.player1;
-                
-                if (opData) {
-                    // Interpolation target
-                    if(playerOpponent) {
-                        playerOpponent.targetX = opData.x;
-                        playerOpponent.targetY = opData.y;
-                        playerOpponent.hp = opData.hp;
-                        document.getElementById('p2-health').style.width = opData.hp + '%';
-                    }
-                }
-
-                // معالجة الأحداث (سهام، تطويرات)
-                if (data.events && data.events.length > 0) {
-                    data.events.forEach(ev => {
-                        // معالجة فقط الأحداث التي لم أرسلها أنا (أو معالجة الكل إذا لزم الأمر، لكننا قمنا بالأكشن محليا بالفعل)
-                        if (ev.shooter !== myUserId && ev.type === 'shoot') {
-                             spawnArrow(ev.x, ev.y, ev.angle, ev.power, false);
-                        }
-                    });
-                    // مسح الأحداث بعد معالجتها (يقوم المضيف بذلك عادة لتنظيف المصفوفة)
-                    // في هذه النسخة المبسطة سنتجاهل التنظيف المعقد
-                }
-            });
-
-            // حلقة الإرسال
-            setInterval(syncMyState, 100);
-        }
-
-        async function syncMyState() {
+        async function syncState() {
             if (!matchId || !playerMe) return;
-
-            const myField = isHost ? 'player1' : 'player2';
-            const updatePayload = {};
-            updatePayload[`${myField}.x`] = Math.round(playerMe.mainBody.position.x);
-            updatePayload[`${myField}.y`] = Math.round(playerMe.mainBody.position.y);
-            updatePayload[`${myField}.hp`] = playerMe.hp;
-            updatePayload['updatedAt'] = Date.now();
-
-            // نقوم بإرسال تحديث خفيف
-            // ملاحظة: لتفادي كثرة الكتابة في Firestore، هذا المعدل (10 مرات في الثانية) قد يكون كثيراً في الخطة المجانية إذا استمر طويلاً
-            // لكنه ضروري للحركة السلسة.
+            const myData = isHost ? { player1: getPayload() } : { player2: getPayload() };
             try {
-                await updateDoc(doc(db, MATCHES_COLL, matchId), updatePayload);
-            } catch(e) {
-                // console.log("Sync skipped");
+                await updateDoc(doc(db, MATCHES_COLL, matchId), myData);
+            } catch(e) {}
+        }
+
+        function getPayload() {
+            return {
+                x: Math.round(playerMe.body.position.x),
+                y: Math.round(playerMe.body.position.y),
+                hp: playerMe.hp
+            };
+        }
+
+        function handleNetworkUpdate(snap) {
+            if (!snap.exists()) return;
+            const data = snap.data();
+            
+            const opData = isHost ? data.player2 : data.player1;
+            if (opData && playerOpponent) {
+                playerOpponent.targetPos = { x: opData.x, y: opData.y };
+                playerOpponent.hp = opData.hp;
+                
+                document.getElementById('p2-health').style.width = opData.hp + "%";
             }
-        }
 
-        async function pushEvent(eventData) {
-            // إضافة حدث لقائمة الأحداث (مثل إطلاق سهم)
-            // نستخدم arrayUnion لإضافة الحدث للقائمة
-            const { arrayUnion } = await import("https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js");
-            await updateDoc(doc(db, MATCHES_COLL, matchId), {
-                events: arrayUnion(eventData)
-            });
-            
-            // تنظيف دوري للأحداث القديمة يمكن أن يتم هنا
-        }
-
-        function interpolateOpponent(p) {
-            if (!p || typeof p.targetX === 'undefined') return;
-            
-            // تحريك الجسم الفيزيائي نحو الهدف ببطء (Smoothing)
-            const currentPos = p.mainBody.position;
-            const dx = p.targetX - currentPos.x;
-            const dy = p.targetY - currentPos.y;
-            
-            // إذا كانت المسافة كبيرة جداً، نقل فوري (Teleport)
-            if (Math.abs(dx) > 200 || Math.abs(dy) > 200) {
-                Body.setPosition(p.mainBody, { x: p.targetX, y: p.targetY });
-                Body.setVelocity(p.mainBody, { x: 0, y: 0 });
-            } else {
-                // تحريك السرعة لمحاكاة المشي نحو الهدف
-                Body.setVelocity(p.mainBody, {
-                    x: dx * 0.1,
-                    y: dy * 0.1 + p.mainBody.velocity.y // الحفاظ على الجاذبية الحالية
+            if (data.events) {
+                data.events.forEach(ev => {
+                    if (ev.shooter !== myUserId) {
+                         createArrow(ev.x, ev.y, ev.angle, ev.power, false);
+                    }
                 });
+                
+                if (isHost && data.events.length > 0) {
+                    updateDoc(doc(db, MATCHES_COLL, matchId), { events: [] });
+                }
             }
         }
-        
-        // 7. واجهة المستخدم
-        function updateHealthUI() {
-            const p1Bar = document.getElementById('p1-health');
-            p1Bar.style.width = Math.max(0, playerMe.hp) + '%';
+
+        async function pushEvent(ev) {
+            await updateDoc(doc(db, MATCHES_COLL, matchId), {
+                events: arrayUnion(ev)
+            });
         }
 
-        // تشغيل التهيئة
-        initGame();
+        function takeDamage(amount) {
+            playerMe.hp -= amount;
+            document.getElementById('p1-health').style.width = Math.max(0, playerMe.hp) + "%";
+            
+            if (playerMe.hp <= 0) {
+                gameOver(false);
+            }
+        }
 
-        // معالجة تغيير حجم الشاشة
-        window.addEventListener('resize', () => {
-            if (!render || !render.canvas) return; // FIX: Ensure render exists
-            render.canvas.width = window.innerWidth;
-            render.canvas.height = window.innerHeight;
-        });
+        function gameOver(win) {
+            gameActive = false;
+            const overlay = document.getElementById('overlay-screen');
+            overlay.classList.remove('opacity-0', 'pointer-events-none');
+            overlay.innerHTML = `
+                <h1 class="text-4xl md:text-6xl font-bold mb-4 ${win ? 'text-green-500' : 'text-red-500'}">${win ? 'انتصرت!' : 'خسرت!'}</h1>
+                <button onclick="location.reload()" class="px-8 py-4 bg-white text-black font-bold rounded-full hover:scale-105 transition shadow-xl">العب مجدداً</button>
+            `;
+        }
 
+        init();
     </script>
 </body>
 </html>
