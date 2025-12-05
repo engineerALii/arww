@@ -248,6 +248,10 @@
         const tank2Img = new Image();
         tank2Img.src = 'https://images.vexels.com/media/users/3/256747/isolated/preview/fb1eff9ab5744e1044bb495dfea4956b-military-tank-color-stroke.png';
 
+        // تحميل الصوت الجديد
+        const shootSound = new Audio('https://www.dropbox.com/scl/fi/wii8v05g54cl48d830rqd/072807_heavy-machine-gun-50-caliber-39765-mp3cut.net.mp3?rlkey=pj4w6rn3oq1evy6x0lcztvvez&st=we408v48&dl=1');
+        shootSound.preload = 'auto'; // تحميل مسبق
+
         // صور التطويرات الجديدة
         const powerupIcons = {
             SPEED: new Image(),
@@ -302,6 +306,15 @@
         // --- الصوت ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playSound(type) {
+            // تشغيل صوت الإطلاق الجديد
+            if (type === 'shoot') {
+                const s = shootSound.cloneNode();
+                s.volume = 0.5;
+                s.play().catch(e => console.log('Audio blocked:', e));
+                return;
+            }
+
+            // الأصوات الأخرى (توليد برمجية)
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
@@ -309,15 +322,7 @@
             gain.connect(audioCtx.destination);
             const now = audioCtx.currentTime;
 
-            if (type === 'shoot') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(100, now);
-                osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
-                gain.gain.setValueAtTime(0.5, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-                osc.start(now);
-                osc.stop(now + 0.3);
-            } else if (type === 'hit') {
+            if (type === 'hit') {
                 osc.type = 'square';
                 osc.frequency.setValueAtTime(150, now);
                 osc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
@@ -732,7 +737,8 @@
                 ctx.stroke();
             }
 
-            ctx.rotate(player.angle);
+            // تعديل زاوية الدوران: إضافة 180 درجة (PI) لعكس الاتجاه
+            ctx.rotate(player.angle + Math.PI);
             
             ctx.shadowColor = 'rgba(0,0,0,0.7)';
             ctx.shadowBlur = 25;
@@ -740,7 +746,7 @@
             ctx.shadowOffsetY = 5;
             
             try {
-                // رسم الصورة مع تصحيح الاتجاه (الصور الأصلية متجهة لليمين)
+                // رسم الصورة
                 ctx.drawImage(img, -60, -60, 120, 120);
             } catch(e) {
                 ctx.fillStyle = player.team === 'tank1' ? '#4b5563' : '#6b7280';
@@ -751,7 +757,12 @@
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 0;
 
-            ctx.rotate(-player.angle);
+            // استعادة الدوران لرسم الاسم بشكل صحيح
+            // بما أننا قمنا بتدوير السياق بـ angle + PI، يجب أن نعكس ذلك ليبقى النص أفقياً
+            // أو يمكننا فقط تدويره مرة أخرى ليعود للوضع الطبيعي بالنسبة للشاشة، لكن النص يجب أن يتبع اللاعب
+            // لرسم النص فوق الدبابة بشكل ثابت بغض النظر عن دورانها:
+            ctx.rotate(-(player.angle + Math.PI));
+            
             if (!isLocal) {
                 ctx.fillStyle = '#ef4444';
                 ctx.font = 'bold 16px Cairo';
